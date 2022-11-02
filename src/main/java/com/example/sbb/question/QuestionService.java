@@ -5,14 +5,25 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import javax.persistence.criteria.CriteriaBuilder;
+import javax.persistence.criteria.CriteriaQuery;
+import javax.persistence.criteria.Join;
+import javax.persistence.criteria.JoinType;
+import javax.persistence.criteria.Predicate;
+import javax.persistence.criteria.Root;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
 import com.example.sbb.DataNotFoundException;
+import com.example.sbb.answer.Answer;
+import com.example.sbb.user.SiteUser;
 
+import groovyjarjarantlr4.v4.parse.ANTLRParser.finallyClause_return;
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
@@ -20,6 +31,25 @@ import lombok.RequiredArgsConstructor;
 public class QuestionService {
 	
 	private final QuestionRepository questionRepository;
+	
+	private Specification<Question> search(String kw){
+		return new Specification<>() {
+			private static final long serialVersionUID = 1L;
+			
+			@Override
+			public Predicate toPredicate(Root<Question> q, CriteriaQuery<?> query, CriteriaBuilder cb) {
+				query.distinct(true); //중복제거
+				Join<Question, SiteUser> u1 = q.join("author", JoinType.LEFT);
+				Join<Question, Answer> a = q.join("answerList", JoinType.LEFT);
+				Join<Answer, SiteUser> u2 = a.join("author", JoinType.LEFT);
+				return cb.or(cb.like(q.get("subject"), "%"+kw+"%"),
+						cb.like(q.get("content"), "%"+kw+"%"),
+						cb.like(u1.get("username"), "%"+kw+"%"),
+						cb.like(a.get("content"), "%"+kw+"%"),
+						cb.like(u2.get("username"),"%"+kw+"%"));
+			}
+		};
+	}
 	
 	public List<Question> getList(){
 		return this.questionRepository.findAll();
@@ -34,12 +64,17 @@ public class QuestionService {
 		}
 	}
 	
-	public void create(String subject, String content) {
+	public void create(String subject, String content, SiteUser user) {
 		Question q = new Question();
 		q.setContent(content);
 		q.setSubject(subject);
 		q.setCreateDate(LocalDateTime.now());
+		q.setAuthor(user);
 		this.questionRepository.save(q);
+	}
+	
+	public void delete(Question question) {
+		this.questionRepository.delete(question);
 	}
 	
 	public Page<Question> getList(int page){
@@ -48,6 +83,18 @@ public class QuestionService {
 		sorts.add(Sort.Order.desc("createDate"));
 		Pageable pageable = PageRequest.of(page, 10, Sort.by(sorts));
 		return this.questionRepository.findAll(pageable);
+	}
+	
+	public void modify(Question question, String subject, String content) {
+		question.setContent(content);
+		question.setSubject(subject);
+		question.setModifyDate(LocalDateTime.now());
+		this.questionRepository.save(question);
+	}
+	
+	public void vote(Question question, SiteUser siteUser) {
+		question.getVoter().add(siteUser);
+		this.questionRepository.save(question);
 	}
 
 	
